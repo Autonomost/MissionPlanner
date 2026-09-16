@@ -58,26 +58,70 @@ namespace wix
 
         static string basedir = "";
 
+        /// <summary>Publisher shown in Programs and Features / the MSI summary</summary>
+        public static string manufacturer = "Nevermind";
+
+        /// <summary>Product name, install folder name and start menu folder name</summary>
+        public static string productName = "Mission Planner";
+
+        /// <summary>
+        /// UpgradeCode identifies the product line for upgrades. This is deliberately different from the
+        /// upstream Mission Planner installer so this build does not silently replace an official install.
+        /// Pass --upgradecode={625389D7-EB3C-4d77-A5F6-A285CF99437D} to upgrade over the upstream installer.
+        /// </summary>
+        public static string upgradeCode = "{3F1B7C52-8D0A-4E6B-9B27-6A5E2C9D4F10}";
+
+        /// <summary>
+        /// Run DPInst driver install and add the driver signing certificate to the trusted root store.
+        /// Off by default: Windows 10/11 use the in-box USB serial driver for ArduPilot boards.
+        /// </summary>
+        public static bool includeDrivers = false;
+
+        /// <summary>Registry safe version of the manufacturer name</summary>
+        public static string manufacturerKey
+        {
+            get { return System.Text.RegularExpressions.Regex.Replace(manufacturer, "[^A-Za-z0-9]", ""); }
+        }
+
         [STAThread]
         static void Main(string[] args)
         {
-            Drivers.process();
+            // usage: wix.exe <bin directory> [output name] [--manufacturer=NAME] [--product=NAME] [--upgradecode={GUID}] [--drivers]
+            var positional = new List<string>();
+            foreach (var arg in args)
+            {
+                if (arg.StartsWith("--manufacturer=", StringComparison.OrdinalIgnoreCase))
+                    manufacturer = arg.Substring("--manufacturer=".Length).Trim('"');
+                else if (arg.StartsWith("--product=", StringComparison.OrdinalIgnoreCase))
+                    productName = arg.Substring("--product=".Length).Trim('"');
+                else if (arg.StartsWith("--upgradecode=", StringComparison.OrdinalIgnoreCase))
+                    upgradeCode = arg.Substring("--upgradecode=".Length).Trim('"');
+                else if (arg.Equals("--drivers", StringComparison.OrdinalIgnoreCase))
+                    includeDrivers = true;
+                else
+                    positional.Add(arg);
+            }
 
-            if (args.Length == 0)
+            if (positional.Count == 0)
             {
                 Console.WriteLine("Bad Directory");
+                Console.WriteLine("usage: wix.exe <bin directory> [output name] [--manufacturer=NAME] [--product=NAME] [--upgradecode={GUID}] [--drivers]");
                 return;
             }
 
-            string path = args[0];
+            Drivers.process();
+
+            string path = positional[0];
             basedir = path;
             //Path.GetDirectoryName(Application.ExecutablePath) + Path.DirectorySeparatorChar+ 
             string file = "installer.wxs";
 
             string outputfilename = "MissionPlanner";
 
-            if (args.Length > 1)
-                outputfilename = args[1];
+            if (positional.Count > 1)
+                outputfilename = positional[1];
+
+            Console.WriteLine("Manufacturer: " + manufacturer + ", Product: " + productName + ", UpgradeCode: " + upgradeCode + ", Drivers: " + includeDrivers);
 
             string exepath = Path.GetFullPath(path) + Path.DirectorySeparatorChar + "MissionPlanner.exe";
             string version = Assembly.LoadFile(exepath).GetName().Version.ToString();
@@ -88,7 +132,7 @@ namespace wix
 
             header(fvi.ProductVersion);
 
-            sw.WriteLine("    <Directory Id=\"INSTALLDIR\" Name=\"Mission Planner\">");
+            sw.WriteLine("    <Directory Id=\"INSTALLDIR\" Name=\"" + productName + "\">");
 
             sw.WriteLine(@"        <Component Id=""InstallDirPermissions"" Guid=""{525389D7-EB3C-4d77-A5F6-A285CF99437D}"" KeyPath=""yes""> 
             <CreateFolder> 
@@ -119,21 +163,6 @@ namespace wix
 
             st.WriteLine(@"""C:\Program Files\7-Zip\7z.exe"" a -tzip -xr!beta.bat -xr!cameras.xml -xr!firmware.hex -xr!*.zip -xr!stats.xml -xr!*.bin -xr!*.xyz -xr!*.sqlite -xr!*.dxf -xr!*.zip -xr!*.h -xr!*.param -xr!ParameterMetaData.xml -xr!translation -xr!mavelous_web -xr!stats.xml -xr!driver -xr!*.etag -xr!srtm -xr!*.rlog -xr!*.zip -xr!*.tlog -xr!config.xml -xr!gmapcache -xr!eeprom.bin -xr!dataflash.bin -xr!*.new -xr!*.log -xr!ArdupilotPlanner.log* -xr!cameras.xml -xr!firmware.hex -xr!*.zip -xr!stats.xml -xr!ParameterMetaData.xml -xr!*.etag -xr!*.rlog -xr!*.tlog -xr!config.xml -xr!gmapcache -xr!eeprom.bin -xr!dataflash.bin -xr!*.new " + fn + @".zip " + path + "*");
 
-            st.WriteLine("About to upload!!!!!!!!!");
-            st.WriteLine("pause");
-
-            st.WriteLine(@"c:\cygwin\bin\chmod.exe 777 " + fn + ".zip");
-            st.WriteLine(@"c:\cygwin\bin\chmod.exe 777 " + fn + ".msi");
-
-            st.WriteLine(@"c:\cygwin\bin\ln.exe -f -s " + fn + ".zip " + outputfilename + "-latest.zip");
-            st.WriteLine(@"c:\cygwin\bin\ln.exe -f -s " + fn + ".msi " + outputfilename + "-latest.msi");
-
-            st.WriteLine(@"c:\cygwin\bin\rsync.exe -Pv -e '/usr/bin/ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /cygdrive/c/Users/michael/sitl' " + fn + ".zip michael@mega2.ardupilot.org:MissionPlanner/");
-            st.WriteLine(@"c:\cygwin\bin\rsync.exe -Pv -e '/usr/bin/ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /cygdrive/c/Users/michael/sitl' " + fn + ".msi michael@mega2.ardupilot.org:MissionPlanner/");
-
-            st.WriteLine(@"c:\cygwin\bin\rsync.exe -Pv -e '/usr/bin/ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /cygdrive/c/Users/michael/sitl'   -l MissionPlanner-latest.zip michael@mega2.ardupilot.org:MissionPlanner/");
-            st.WriteLine(@"c:\cygwin\bin\rsync.exe -Pv -e '/usr/bin/ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /cygdrive/c/Users/michael/sitl'   -l MissionPlanner-latest.msi michael@mega2.ardupilot.org:MissionPlanner/");
-
             st.Close();
 
             //runProgram("create.bat");
@@ -161,11 +190,11 @@ namespace wix
 <Wix xmlns=""http://schemas.microsoft.com/wix/2006/wi"" xmlns:netfx=""http://schemas.microsoft.com/wix/NetFxExtension"" xmlns:difx=""http://schemas.microsoft.com/wix/DifxAppExtension"" xmlns:iis='http://schemas.microsoft.com/wix/IIsExtension' >
 
 
-    <Product Id=""" + newid + @""" Name=""Mission Planner"" Language=""1033"" Version=""" + version + @""" Manufacturer=""Michael Oborne"" UpgradeCode=""{625389D7-EB3C-4d77-A5F6-A285CF99437D}"">
+    <Product Id=""" + newid + @""" Name=""" + productName + @""" Language=""1033"" Version=""" + version + @""" Manufacturer=""" + manufacturer + @""" UpgradeCode=""" + upgradeCode + @""">
 
-    <Package Description=""Mission Planner Installer"" Comments=""Mission Planner Installer"" Manufacturer=""Michael Oborne"" InstallerVersion=""200"" Compressed=""yes"" />
+    <Package Description=""" + productName + @" Installer"" Comments=""" + productName + @" Installer"" Manufacturer=""" + manufacturer + @""" InstallerVersion=""200"" Compressed=""yes"" />
 
-    <Upgrade Id=""{625389D7-EB3C-4d77-A5F6-A285CF99437D}"">
+    <Upgrade Id=""" + upgradeCode + @""">
         <UpgradeVersion OnlyDetect=""yes"" Minimum=""" + version + @""" Property=""NEWERVERSIONDETECTED"" IncludeMinimum=""no"" />
         <UpgradeVersion OnlyDetect=""no"" Minimum=""0.0.0"" Maximum=""" + version + @""" Property=""OLDERVERSIONBEINGUPGRADED"" IncludeMinimum=""yes"" IncludeMaximum=""yes"" />
     </Upgrade>
@@ -195,10 +224,11 @@ namespace wix
         </Directory>
 
         <Directory Id=""ProgramMenuFolder"">
-            <Directory Id=""ApplicationProgramsFolder"" Name=""Mission Planner"" />
+            <Directory Id=""ApplicationProgramsFolder"" Name=""" + productName + @""" />
         </Directory>
     </Directory>
 
+" + (includeDrivers ? @"
     <Binary Id=""signedcer""  SourceFile=""..\Drivers\signed.cer"" />
   
     <CustomAction  Id='Drivercleanup' Execute='deferred' 
@@ -216,6 +246,7 @@ namespace wix
     Installed AND VersionNT64</Custom>
     <Custom Action=""Drivercleanup""  After=""CreateShortcuts"">NOT Installed</Custom>
     </InstallExecuteSequence>
+" : "") + @"
 
     <InstallExecuteSequence>
     <Custom Action='comReg' After='CreateShortcuts'>NOT REMOVE</Custom>
@@ -250,18 +281,19 @@ namespace wix
 
     <DirectoryRef Id=""ApplicationProgramsFolder"">
         <Component Id=""ApplicationShortcut"" Guid=""*"">
-            <Shortcut Id=""ApplicationStartMenuShortcut10"" Name=""Mission Planner"" Description=""Mission Planner"" Target=""[INSTALLDIR]MissionPlanner.exe"" WorkingDirectory=""INSTALLDIR"" />
-            <Shortcut Id=""UninstallProduct"" Name=""Uninstall Mission Planner"" Description=""Uninstalls My Application"" Target=""[System64Folder]msiexec.exe"" Arguments=""/x [ProductCode]"" />
-            <RegistryValue Root=""HKCU"" Key=""Software\MichaelOborne\MissionPlanner"" Name=""installed"" Type=""integer"" Value=""1"" KeyPath=""yes"" />
+            <Shortcut Id=""ApplicationStartMenuShortcut10"" Name=""" + productName + @""" Description=""" + productName + @""" Target=""[INSTALLDIR]MissionPlanner.exe"" WorkingDirectory=""INSTALLDIR"" />
+            <Shortcut Id=""UninstallProduct"" Name=""Uninstall " + productName + @""" Description=""Uninstalls " + productName + @""" Target=""[System64Folder]msiexec.exe"" Arguments=""/x [ProductCode]"" />
+            <RegistryValue Root=""HKCU"" Key=""Software\" + manufacturerKey + @"\MissionPlanner"" Name=""installed"" Type=""integer"" Value=""1"" KeyPath=""yes"" />
 
             <RemoveFolder Id=""dltApplicationProgramsFolder"" Directory=""ApplicationProgramsFolder"" On=""uninstall"" />
-
+" + (includeDrivers ? @"
             <iis:Certificate Id=""rootcert"" StoreLocation=""localMachine"" StoreName=""root"" Overwrite='yes' BinaryKey='signedcer' Request=""no"" Name='Michael Oborne' />
+" : "") + @"
         </Component>
     </DirectoryRef>
 
 
-    <Feature Id=""Complete"" Title=""Mission Planner"" Level=""1"">
+    <Feature Id=""Complete"" Title=""" + productName + @""" Level=""1"">
         <ComponentRef Id=""InstallDirPermissions"" />
 ";
             sw.WriteLine(data);
@@ -288,7 +320,7 @@ namespace wix
             Event=""DoAction"" 
             Value=""LaunchApplication"">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
     </UI>
-    <Property Id=""WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"" Value=""Launch Mission Planner"" />
+    <Property Id=""WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"" Value=""Launch " + productName + @""" />
 
     <!-- Step 3: Include the custom action -->
     <Property Id=""WixShellExecTarget"" Value=""[#" + mainexeid + @"]"" />

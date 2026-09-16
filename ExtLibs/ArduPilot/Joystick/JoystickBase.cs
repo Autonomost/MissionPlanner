@@ -35,6 +35,9 @@ namespace MissionPlanner.Joystick
         int custom0 = 65535/2;
         int custom1 = 65535/2;
 
+        // per button toggle / cycle state for Aux_Function (index = system button number)
+        int[] auxstate = new int[128];
+
 
         //no need for finalizer...
         //~Joystick()
@@ -378,12 +381,13 @@ namespace MissionPlanner.Joystick
         {
             if (but.buttonno != -1)
             {
-                // only do_set_relay and Button_axis0-1 uses the button up option
+                // only do_set_relay, Button_axis0-1 and Aux_Function use the button up option
                 if (buttondown == false)
                 {
                     if (but.function != buttonfunction.Do_Set_Relay &&
                         but.function != buttonfunction.Button_axis0 &&
-                        but.function != buttonfunction.Button_axis1)
+                        but.function != buttonfunction.Button_axis1 &&
+                        but.function != buttonfunction.Aux_Function)
                     {
                         return;
                     }
@@ -616,6 +620,70 @@ namespace MissionPlanner.Joystick
                             catch
                             {
                                 CustomMessageBox.Show("Failed to Button_axis1");
+                            }
+                        }, null);
+                        break;
+                    case buttonfunction.Aux_Function:
+                        _context.Send( delegate
+                        {
+                            try
+                            {
+                                // p1 = RCx_OPTION value, p2 = auxfunctiontrigger
+                                int function = (int) but.p1;
+                                var trigger = (auxfunctiontrigger) (int) but.p2;
+                                int level = -1;
+
+                                const int LOW = (int) MAVLink.MAV_CMD_DO_AUX_FUNCTION_SWITCH_LEVEL.LOW;
+                                const int MIDDLE = (int) MAVLink.MAV_CMD_DO_AUX_FUNCTION_SWITCH_LEVEL.MIDDLE;
+                                const int HIGH = (int) MAVLink.MAV_CMD_DO_AUX_FUNCTION_SWITCH_LEVEL.HIGH;
+
+                                switch (trigger)
+                                {
+                                    case auxfunctiontrigger.HighOnPress:
+                                        if (buttondown)
+                                            level = HIGH;
+                                        break;
+                                    case auxfunctiontrigger.HighOnPressLowOnRelease:
+                                        level = buttondown ? HIGH : LOW;
+                                        break;
+                                    case auxfunctiontrigger.ToggleHighLow:
+                                        if (buttondown)
+                                        {
+                                            auxstate[but.buttonno] = auxstate[but.buttonno] == HIGH ? LOW : HIGH;
+                                            level = auxstate[but.buttonno];
+                                        }
+                                        break;
+                                    case auxfunctiontrigger.MiddleOnPress:
+                                        if (buttondown)
+                                            level = MIDDLE;
+                                        break;
+                                    case auxfunctiontrigger.LowOnPress:
+                                        if (buttondown)
+                                            level = LOW;
+                                        break;
+                                    case auxfunctiontrigger.CycleLowMiddleHigh:
+                                        if (buttondown)
+                                        {
+                                            auxstate[but.buttonno] = (auxstate[but.buttonno] + 1) % 3;
+                                            level = auxstate[but.buttonno];
+                                        }
+                                        break;
+                                }
+
+                                // nothing to send for this edge
+                                if (level < 0)
+                                    return;
+
+                                log.InfoFormat("Joystick Aux_Function {0} level {1} (button {2})", function, level, but.buttonno);
+
+                                if (!Interface.doCommand((byte)Interface.sysidcurrent,(byte)Interface.compidcurrent,MAVLink.MAV_CMD.DO_AUX_FUNCTION, function, level, 0, 0, 0, 0, 0))
+                                {
+                                    CustomMessageBox.Show("Aux function " + function + " was rejected by the vehicle (needs ArduPilot 4.1 or later, and the option must be supported by this vehicle)", "Aux_Function");
+                                }
+                            }
+                            catch
+                            {
+                                CustomMessageBox.Show("Failed to Aux_Function");
                             }
                         }, null);
                         break;
