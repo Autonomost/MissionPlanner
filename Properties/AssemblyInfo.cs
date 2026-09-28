@@ -1,5 +1,9 @@
 ﻿using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+
+// let the MSTest project exercise internal helpers (POI file load, test reset)
+[assembly: InternalsVisibleTo("MissionPlannerTests")]
 
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
